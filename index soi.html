@@ -1590,8 +1590,11 @@
 
     <script>
         // ========== GLOBAL VARIABLES ==========
+        const API_BASE_URL = 'http://127.0.0.1:5000';
         let currentStream = null;
         let currentAnalysisType = null; // 'snake' or 'bite'
+        let currentSnakeImageFile = null;
+        let currentBiteImageFile = null;
         
         // ========== SNAKE DATABASE ==========
         const snakeDatabase = [
@@ -1850,7 +1853,7 @@
         });
         
         snakeImageInput.addEventListener('change', function() {
-            handleImageUpload(this, snakePreviewContainer, snakePreviewImage, snakeFileName);
+            handleImageUpload(this, snakePreviewContainer, snakePreviewImage, snakeFileName, 'snake');
             hideCameraContainer('snake');
         });
         
@@ -1875,7 +1878,7 @@
         });
         
         biteImageInput.addEventListener('change', function() {
-            handleImageUpload(this, bitePreviewContainer, bitePreviewImage, biteFileName);
+            handleImageUpload(this, bitePreviewContainer, bitePreviewImage, biteFileName, 'bite');
             hideCameraContainer('bite');
         });
         
@@ -2021,9 +2024,15 @@
         
         // ========== FUNCTIONS ==========
         // Handle image upload
-        function handleImageUpload(input, previewContainer, previewImage, fileNameElement) {
+        function handleImageUpload(input, previewContainer, previewImage, fileNameElement, type) {
             const file = input.files[0];
             if (file) {
+                if (type === 'snake') {
+                    currentSnakeImageFile = file;
+                } else {
+                    currentBiteImageFile = file;
+                }
+
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
@@ -2120,6 +2129,15 @@
             previewImage.src = imageData;
             previewContainer.style.display = 'block';
             fileNameElement.textContent = `camera-capture-${Date.now()}.jpg`;
+
+            const blob = dataURLToBlob(imageData);
+            const filename = fileNameElement.textContent || `${type}-capture.jpg`;
+            const file = new File([blob], filename, { type: 'image/jpeg' });
+            if (type === 'snake') {
+                currentSnakeImageFile = file;
+            } else {
+                currentBiteImageFile = file;
+            }
             
             // Hide camera container
             hideCameraContainer(type);
@@ -2127,61 +2145,121 @@
             // Stop camera
             stopCamera();
         }
+
+        function dataURLToBlob(dataURL) {
+            const [header, body] = dataURL.split(',');
+            const mime = header.match(/data:(.*?);/)[1];
+            const binary = atob(body);
+            const array = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) {
+                array[i] = binary.charCodeAt(i);
+            }
+            return new Blob([array], { type: mime });
+        }
         
         // Analyze snake image
-        function analyzeSnake() {
-            // Show loading state
+        async function analyzeSnake() {
             analyzeSnakeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
             analyzeSnakeBtn.disabled = true;
             
-            // Simulate API call delay
-            setTimeout(() => {
-                // Randomly select a snake from database for demo
-                const randomSnake = snakeDatabase[Math.floor(Math.random() * 6)]; // First 6 are venomous
-                
-                // Update results with snake data
-                updateSnakeResults(randomSnake);
-                
-                // Show results section
+            try {
+                const file = currentSnakeImageFile || snakeImageInput.files[0];
+                if (!file) {
+                    throw new Error('Please upload or capture a snake image first');
+                }
+
+                const formData = new FormData();
+                formData.append('image', file, file.name || 'snake-image.jpg');
+
+                const response = await fetch(`${API_BASE_URL}/api/identify-snake`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Unable to analyze snake image');
+                }
+
+                const predictedSnake = {
+                    name: payload.species || 'Unknown',
+                    scientific: payload.scientific_name || 'Unknown',
+                    venom: mapVenomPotency(payload.venom_potency),
+                    venomType: payload.venom_type || 'Unknown',
+                    region: payload.region || 'Unknown',
+                    antivenom: payload.antivenom || 'Unavailable',
+                    fatality: payload.fatality_rate || 'Unknown'
+                };
+
+                updateSnakeResults(predictedSnake, Math.round((Number(payload.confidence) || 0) * 100));
                 resultsSection.style.display = 'block';
                 resultsSection.scrollIntoView({ behavior: 'smooth' });
-                
-                // Reset button
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Unable to analyze snake image');
+            } finally {
                 analyzeSnakeBtn.innerHTML = '<i class="fas fa-search"></i> Identify Snake Species';
                 analyzeSnakeBtn.disabled = false;
-            }, 2000);
+            }
         }
         
         // Analyze bite image
-        function analyzeBite() {
-            // Show loading state
+        async function analyzeBite() {
             analyzeBiteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
             analyzeBiteBtn.disabled = true;
             
-            // Simulate API call delay
-            setTimeout(() => {
-                // Randomly select severity and snake for demo
-                const severities = ['high', 'medium', 'low'];
-                const randomSeverity = severities[Math.floor(Math.random() * severities.length)];
-                const randomSnake = snakeDatabase[Math.floor(Math.random() * 6)];
-                
-                // Update results with bite data
-                updateBiteResults(randomSeverity, randomSnake);
-                
-                // Show results section
+            try {
+                const file = currentBiteImageFile || biteImageInput.files[0];
+                if (!file) {
+                    throw new Error('Please upload or capture a bite mark image first');
+                }
+
+                const formData = new FormData();
+                formData.append('image', file, file.name || 'bite-image.jpg');
+
+                const response = await fetch(`${API_BASE_URL}/api/analyze-bite`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Unable to analyze bite image');
+                }
+
+                const probableSnake = {
+                    name: payload.probable_snake || 'Unknown',
+                    scientific: payload.probable_snake_scientific || 'Unknown',
+                    venom: mapVenomPotency(payload.venom_potency || payload.probable_snake_scientific),
+                    venomType: payload.probable_snake_scientific ? 'Unknown' : 'Unknown',
+                    region: 'Unknown',
+                    antivenom: 'Unavailable',
+                    fatality: 'Unknown'
+                };
+
+                updateBiteResults(payload.severity || 'medium', probableSnake, Math.round(Number(payload.confidence) || 0));
                 resultsSection.style.display = 'block';
                 resultsSection.scrollIntoView({ behavior: 'smooth' });
-                
-                // Reset button
+            } catch (error) {
+                console.error(error);
+                alert(error.message || 'Unable to analyze bite image');
+            } finally {
                 analyzeBiteBtn.innerHTML = '<i class="fas fa-stethoscope"></i> Assess Bite Severity';
                 analyzeBiteBtn.disabled = false;
-            }, 2000);
+            }
+        }
+
+        function mapVenomPotency(value) {
+            const normalized = String(value || '').toLowerCase();
+            if (normalized.includes('high')) return 'high';
+            if (normalized.includes('medium')) return 'medium';
+            if (normalized.includes('low')) return 'low';
+            return 'none';
         }
         
         // Update snake identification results
-        function updateSnakeResults(snake) {
+        function updateSnakeResults(snake, confidence = null) {
             resultTitle.textContent = "Snake Species Identification";
-            resultSubtitle.innerHTML = `Analyzed on <span id="analysisDate">${new Date().toLocaleDateString()}</span> | Confidence: <span id="confidenceScore">${Math.floor(Math.random() * 10) + 90}%</span>`;
+            const confidenceText = confidence !== null && confidence !== undefined ? `${confidence}%` : `${Math.floor(Math.random() * 10) + 90}%`;
+            resultSubtitle.innerHTML = `Analyzed on <span id="analysisDate">${new Date().toLocaleDateString()}</span> | Confidence: <span id="confidenceScore">${confidenceText}</span>`;
             
             speciesName.textContent = `${snake.name}`;
             scientificName.textContent = snake.scientific;
@@ -2212,9 +2290,10 @@
         }
         
         // Update bite assessment results
-        function updateBiteResults(severity, snake) {
+        function updateBiteResults(severity, snake, confidence = null) {
             resultTitle.textContent = "Bite Mark Assessment & Verification";
-            resultSubtitle.innerHTML = `Analyzed on <span id="analysisDate">${new Date().toLocaleDateString()}</span> | Confidence: <span id="confidenceScore">${Math.floor(Math.random() * 10) + 85}%</span>`;
+            const confidenceText = confidence !== null && confidence !== undefined ? `${confidence}%` : `${Math.floor(Math.random() * 10) + 85}%`;
+            resultSubtitle.innerHTML = `Analyzed on <span id="analysisDate">${new Date().toLocaleDateString()}</span> | Confidence: <span id="confidenceScore">${confidenceText}</span>`;
             
             speciesName.textContent = `${snake.name} (Probable)`;
             scientificName.textContent = snake.scientific;
