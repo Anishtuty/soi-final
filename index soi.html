@@ -1588,6 +1588,15 @@
         </div>
     </div>
 
+    <!-- Info Modal (Emergency / First Aid / Antivenom) -->
+    <div class="modal" id="infoModal">
+        <div class="modal-content" style="max-width:680px;">
+            <button class="close-modal" id="closeInfoModalBtn">&times;</button>
+            <h3 id="infoModalTitle" style="color:var(--primary-dark);margin-bottom:20px;"></h3>
+            <div id="infoModalBody" style="line-height:1.8;font-size:0.95rem;"></div>
+        </div>
+    </div>
+
     <script>
         // ========== GLOBAL VARIABLES ==========
         const API_BASE_URL = 'http://127.0.0.1:5000';
@@ -1596,18 +1605,34 @@
         let currentSnakeImageFile = null;
         let currentBiteImageFile = null;
         
-        // ========== SNAKE DATABASE ==========
-        const snakeDatabase = [
+        // ========== SNAKE DATABASE (loaded from API) ==========
+        let snakeDatabase = [];
+
+        async function loadSnakeDatabaseFromAPI() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/snakes`);
+                if (!res.ok) throw new Error('API error');
+                const data = await res.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    snakeDatabase = data;
+                    filterSnakes('all');
+                    return;
+                }
+            } catch (e) {
+                console.warn('Could not load snake DB from API, using built-in data.', e);
+            }
+            // Fallback built-in data
+            snakeDatabase = [
             {
                 id: 1,
                 name: "Common Cobra",
                 scientific: "Naja naja",
-                image: "cobra.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Indian_Cobra.JPG/400px-Indian_Cobra.JPG",
                 venom: "high",
                 venomType: "Neurotoxic",
                 region: "South Asia",
                 antivenom: "Polyvalent, Monovalent",
-                description: "Highly venomous snake responsible for many snakebite fatalities in South Asia. Identifiable by its hood when threatened.",
+                description: "Highly venomous snake responsible for many snakebite fatalities in South Asia. Identifiable by its iconic hood when threatened.",
                 symptoms: "Ptosis, paralysis, respiratory failure, local pain and swelling",
                 ld50: "0.29 mg/kg",
                 habitat: "Agricultural areas, forests, near human settlements",
@@ -1617,12 +1642,12 @@
                 id: 2,
                 name: "Russell's Viper",
                 scientific: "Daboia russelii",
-                image: "viper.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Daboia_russelii_banded.jpg/400px-Daboia_russelii_banded.jpg",
                 venom: "high",
                 venomType: "Hemotoxic, Cytotoxic",
                 region: "South and Southeast Asia",
                 antivenom: "Polyvalent",
-                description: "Highly venomous viper responsible for most snakebite deaths in India and Southeast Asia.",
+                description: "Responsible for the most snakebite deaths in India and Southeast Asia. Its venom causes severe coagulopathy and organ damage.",
                 symptoms: "Severe pain, swelling, bleeding disorders, kidney failure",
                 ld50: "0.03 mg/kg",
                 habitat: "Open grasslands, farmlands, scrub forests",
@@ -1631,13 +1656,13 @@
             {
                 id: 3,
                 name: "Green Pit Viper",
-                scientific: "Trimeresurus spp.",
-                image: "green-pit-viper.jpg",
+                scientific: "Trimeresurus albolabris",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Trimeresurus_albolabris.jpg/400px-Trimeresurus_albolabris.jpg",
                 venom: "medium",
                 venomType: "Cytotoxic, Hemotoxic",
                 region: "Southeast Asia",
                 antivenom: "Monovalent (region-specific)",
-                description: "Arboreal pit viper with excellent camouflage. Bites are painful but rarely fatal with treatment.",
+                description: "Arboreal pit viper with excellent camouflage among green foliage. Bites are painful but rarely fatal with prompt treatment.",
                 symptoms: "Severe local pain, swelling, blistering, tissue necrosis",
                 ld50: "1.0-2.0 mg/kg",
                 habitat: "Trees, shrubs in forests and gardens",
@@ -1647,12 +1672,12 @@
                 id: 4,
                 name: "Common Krait",
                 scientific: "Bungarus caeruleus",
-                image: "krait.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Indian_Common_Krait.jpg/400px-Indian_Common_Krait.jpg",
                 venom: "high",
                 venomType: "Neurotoxic",
                 region: "South Asia",
                 antivenom: "Polyvalent",
-                description: "Nocturnal snake with highly potent neurotoxic venom. Bites often painless but deadly.",
+                description: "Nocturnal snake with highly potent neurotoxic venom. Bites often painless but deadly, occurring during sleep.",
                 symptoms: "Abdominal pain, ptosis, paralysis, respiratory failure",
                 ld50: "0.09 mg/kg",
                 habitat: "Agricultural fields, termite mounds, human dwellings",
@@ -1662,12 +1687,12 @@
                 id: 5,
                 name: "Saw-scaled Viper",
                 scientific: "Echis carinatus",
-                image: "saw-scaled-viper.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Echis_carinatus2.jpg/400px-Echis_carinatus2.jpg",
                 venom: "high",
                 venomType: "Hemotoxic, Cytotoxic",
                 region: "Middle East, South Asia, Africa",
                 antivenom: "Polyvalent",
-                description: "Small but highly aggressive viper responsible for many bites in dry regions.",
+                description: "Small but highly aggressive viper responsible for more human deaths than any other snake in many dry regions.",
                 symptoms: "Local swelling, bleeding, necrosis, coagulopathy",
                 ld50: "0.24 mg/kg",
                 habitat: "Arid regions, rocky areas, dry grasslands",
@@ -1677,12 +1702,12 @@
                 id: 6,
                 name: "King Cobra",
                 scientific: "Ophiophagus hannah",
-                image: "king-cobra.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Ophiophagus_hannah_2007.jpg/400px-Ophiophagus_hannah_2007.jpg",
                 venom: "high",
                 venomType: "Neurotoxic, Cardiotoxic",
                 region: "Southeast Asia, India",
                 antivenom: "Monovalent",
-                description: "World's longest venomous snake. Venom delivery can be very high volume.",
+                description: "The world's longest venomous snake, reaching up to 5.5 metres. Despite its fearsome reputation, it generally avoids humans.",
                 symptoms: "Severe pain, dizziness, paralysis, cardiac arrest",
                 ld50: "1.09 mg/kg",
                 habitat: "Forests, bamboo thickets, mangrove swamps",
@@ -1692,12 +1717,12 @@
                 id: 7,
                 name: "Black Mamba",
                 scientific: "Dendroaspis polylepis",
-                image: "black-mamba.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Black_Mamba.jpg/400px-Black_Mamba.jpg",
                 venom: "high",
                 venomType: "Neurotoxic, Cardiotoxic",
                 region: "Sub-Saharan Africa",
                 antivenom: "Monovalent",
-                description: "Fast, aggressive snake with highly potent neurotoxic venom.",
+                description: "Africa's most feared snake, known for its speed, aggression when threatened, and highly potent venom.",
                 symptoms: "Rapid onset paralysis, respiratory failure, cardiac arrest",
                 ld50: "0.25 mg/kg",
                 habitat: "Savannas, rocky hills, woodlands",
@@ -1707,12 +1732,12 @@
                 id: 8,
                 name: "Copperhead",
                 scientific: "Agkistrodon contortrix",
-                image: "copperhead.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Agkistrodon_contortrix_phaeogaster.jpg/400px-Agkistrodon_contortrix_phaeogaster.jpg",
                 venom: "low",
                 venomType: "Hemotoxic",
                 region: "North America",
                 antivenom: "CroFab, Anavip",
-                description: "Pit viper with relatively mild venom. Bites are rarely fatal.",
+                description: "Pit viper with relatively mild venom. Responsible for the most snakebites in the eastern United States. Bites are rarely fatal.",
                 symptoms: "Pain, swelling, nausea, tissue damage",
                 ld50: "10.9 mg/kg",
                 habitat: "Forests, rocky areas, near water",
@@ -1722,12 +1747,12 @@
                 id: 9,
                 name: "Green Vine Snake",
                 scientific: "Ahaetulla nasuta",
-                image: "vine-snake.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Ahaetulla_nasuta.jpg/400px-Ahaetulla_nasuta.jpg",
                 venom: "low",
                 venomType: "Mildly toxic",
                 region: "South and Southeast Asia",
                 antivenom: "Not required",
-                description: "Rear-fanged snake with mild venom harmless to humans.",
+                description: "A slender rear-fanged snake perfectly camouflaged among vines. Its venom is mild and harmless to humans.",
                 symptoms: "Mild local irritation",
                 ld50: "N/A",
                 habitat: "Trees, shrubs, gardens",
@@ -1737,18 +1762,20 @@
                 id: 10,
                 name: "Boa Constrictor",
                 scientific: "Boa constrictor",
-                image: "boa.jpg",
+                image: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Boa_constrictor_imperator.jpg/400px-Boa_constrictor_imperator.jpg",
                 venom: "none",
                 venomType: "Non-venomous",
                 region: "Central and South America",
                 antivenom: "Not applicable",
-                description: "Large non-venomous snake that kills by constriction.",
-                symptoms: "Bite wounds from teeth",
+                description: "A large, non-venomous snake that kills prey by constriction rather than venom. Popular in the exotic pet trade.",
+                symptoms: "Bite wounds from teeth, possible secondary infection",
                 ld50: "N/A",
                 habitat: "Rainforests, semi-arid regions",
                 fatality: "None from venom"
             }
-        ];
+            ];
+            filterSnakes('all');
+        }
         
         // ========== DOM ELEMENTS ==========
         // Navigation
@@ -1986,7 +2013,20 @@
         
         // Find hospital button
         findHospitalBtn.addEventListener('click', () => {
-            alert("Hospital Locator Feature:\n\n1. Based on your location and identified snake species\n2. Finding nearest hospitals with antivenom stocks\n3. Displaying contact information and directions\n4. Showing estimated travel time\n\n(This feature requires GPS permissions and backend integration)");
+            showInfoModal(
+                '🏥 Hospital Locator',
+                `<p>This feature connects to a global database of hospitals with antivenom stocks.</p>
+                <ul style="padding-left:20px;margin-top:10px;">
+                    <li style="margin-bottom:8px;">Locates hospitals based on your GPS position and identified snake species</li>
+                    <li style="margin-bottom:8px;">Displays contact information and real-time antivenom availability</li>
+                    <li style="margin-bottom:8px;">Shows estimated travel time and best route</li>
+                    <li style="margin-bottom:8px;">Alerts staff before your arrival so they can prepare antivenom</li>
+                </ul>
+                <div style="margin-top:16px;padding:12px;background:rgba(211,47,47,0.08);border-radius:8px;">
+                    <strong style="color:#d32f2f;">⚠️ In an emergency, always call your local emergency number first!</strong>
+                </div>
+                <p style="margin-top:12px;color:#666;">GPS permissions and backend integration required for full functionality.</p>`
+            );
         });
         
         // Modal close button
@@ -2001,6 +2041,18 @@
             }
         });
         
+        // Info modal helpers
+        const infoModal = document.getElementById('infoModal');
+        const closeInfoModalBtn = document.getElementById('closeInfoModalBtn');
+        closeInfoModalBtn.addEventListener('click', () => { infoModal.style.display = 'none'; });
+        window.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.style.display = 'none'; });
+
+        function showInfoModal(title, bodyHTML) {
+            document.getElementById('infoModalTitle').innerHTML = title;
+            document.getElementById('infoModalBody').innerHTML = bodyHTML;
+            infoModal.style.display = 'flex';
+        }
+
         // Footer resource buttons
         document.getElementById('firstAidBtn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -2014,12 +2066,29 @@
         
         document.getElementById('hospitalBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            alert("Hospital locator would connect to global database of hospitals with antivenom stocks, showing locations on an interactive map with contact details and availability information.");
+            showInfoModal(
+                '🗺️ Hospital Locator',
+                `<p>The hospital locator connects to a global database of hospitals with antivenom stocks, showing locations on an interactive map with contact details and live availability information.</p>
+                <ul style="padding-left:20px;margin-top:10px;">
+                    <li style="margin-bottom:8px;">Search by snake species or region</li>
+                    <li style="margin-bottom:8px;">Real-time antivenom stock information</li>
+                    <li style="margin-bottom:8px;">Direct call & directions integration</li>
+                </ul>`
+            );
         });
         
         document.getElementById('researchBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            alert("Research papers section would include:\n\n1. Clinical studies on snakebite treatment\n2. AI/ML models for snake identification\n3. Antivenom efficacy studies\n4. Epidemiology of snakebites globally");
+            showInfoModal(
+                '📄 Research Papers',
+                `<ul style="padding-left:20px;">
+                    <li style="margin-bottom:10px;"><strong>Clinical studies</strong> on snakebite treatment outcomes</li>
+                    <li style="margin-bottom:10px;"><strong>AI/ML models</strong> for snake species identification</li>
+                    <li style="margin-bottom:10px;"><strong>Antivenom efficacy</strong> studies by region</li>
+                    <li style="margin-bottom:10px;"><strong>Epidemiology</strong> of snakebites globally — WHO estimates 5.4 million bites/year</li>
+                    <li style="margin-bottom:10px;"><strong>Toxinology</strong> advances and novel treatment approaches</li>
+                </ul>`
+            );
         });
         
         // ========== FUNCTIONS ==========
@@ -2228,14 +2297,15 @@
                 const probableSnake = {
                     name: payload.probable_snake || 'Unknown',
                     scientific: payload.probable_snake_scientific || 'Unknown',
-                    venom: mapVenomPotency(payload.venom_potency || payload.probable_snake_scientific),
-                    venomType: payload.probable_snake_scientific ? 'Unknown' : 'Unknown',
-                    region: 'Unknown',
-                    antivenom: 'Unavailable',
-                    fatality: 'Unknown'
+                    venom: mapVenomPotency(payload.probable_snake_venom || ''),
+                    venomType: payload.probable_snake_venomType || 'Unknown',
+                    region: payload.probable_snake_region || 'Unknown',
+                    antivenom: payload.probable_snake_antivenom || 'Unavailable',
+                    fatality: payload.probable_snake_fatality || 'Unknown'
                 };
 
-                updateBiteResults(payload.severity || 'medium', probableSnake, Math.round(Number(payload.confidence) || 0));
+                // Use backend recommendations if available
+                updateBiteResults(payload.severity || 'medium', probableSnake, Math.round(Number(payload.confidence) || 0), payload.recommendations || null);
                 resultsSection.style.display = 'block';
                 resultsSection.scrollIntoView({ behavior: 'smooth' });
             } catch (error) {
@@ -2290,7 +2360,7 @@
         }
         
         // Update bite assessment results
-        function updateBiteResults(severity, snake, confidence = null) {
+        function updateBiteResults(severity, snake, confidence = null, backendRecs = null) {
             resultTitle.textContent = "Bite Mark Assessment & Verification";
             const confidenceText = confidence !== null && confidence !== undefined ? `${confidence}%` : `${Math.floor(Math.random() * 10) + 85}%`;
             resultSubtitle.innerHTML = `Analyzed on <span id="analysisDate">${new Date().toLocaleDateString()}</span> | Confidence: <span id="confidenceScore">${confidenceText}</span>`;
@@ -2321,8 +2391,17 @@
             severityIndicator.textContent = severityText;
             severityIndicator.className = `severity-indicator ${severityClass}`;
             
-            // Update recommendations based on severity
-            updateRecommendations(severity === 'high' ? 'high' : severity === 'medium' ? 'medium' : 'low', snake.venomType);
+            // Use backend recommendations if provided, else generate locally
+            if (backendRecs && Array.isArray(backendRecs) && backendRecs.length) {
+                recommendationsList.innerHTML = '';
+                backendRecs.forEach(rec => {
+                    const li = document.createElement('li');
+                    li.textContent = rec;
+                    recommendationsList.appendChild(li);
+                });
+            } else {
+                updateRecommendations(severity, snake.venomType);
+            }
         }
         
         // Update recommendations list
@@ -2416,8 +2495,11 @@
             else if (snake.venom === 'low') venomText = 'Mildly Venomous';
             else venomText = 'Non-Venomous';
             
+            const imgSrc = snake.image && snake.image.startsWith('http')
+                ? snake.image
+                : `https://via.placeholder.com/300x180/2e7d32/FFFFFF?text=${encodeURIComponent(snake.name)}`;
             card.innerHTML = `
-                <img class="snake-image" src="https://via.placeholder.com/300x180/4CAF50/FFFFFF?text=${encodeURIComponent(snake.name)}" alt="${snake.name}">
+                <img class="snake-image" src="${imgSrc}" alt="${snake.name}" onerror="this.src='https://via.placeholder.com/300x180/2e7d32/FFFFFF?text=${encodeURIComponent(snake.name)}'">
                 <div class="snake-info">
                     <div class="snake-name">${snake.name}</div>
                     <div class="snake-scientific">${snake.scientific}</div>
@@ -2453,9 +2535,12 @@
             else if (snake.venom === 'low') venomText = 'Mildly Venomous';
             else venomText = 'Non-Venomous';
             
+            const modalImgSrc = snake.image && snake.image.startsWith('http')
+                ? snake.image
+                : `https://via.placeholder.com/400x300/2e7d32/FFFFFF?text=${encodeURIComponent(snake.name)}`;
             modalSnakeDetails.innerHTML = `
                 <div>
-                    <img class="modal-snake-image" src="https://via.placeholder.com/400x300/4CAF50/FFFFFF?text=${encodeURIComponent(snake.name)}" alt="${snake.name}">
+                    <img class="modal-snake-image" src="${modalImgSrc}" alt="${snake.name}" onerror="this.src='https://via.placeholder.com/400x300/2e7d32/FFFFFF?text=${encodeURIComponent(snake.name)}'">
                     <div class="venom-indicator ${venomClass}" style="margin-top: 15px; text-align: center;">${venomText}</div>
                 </div>
                 <div>
@@ -2514,168 +2599,113 @@
         
         // Show emergency guide
         function showEmergencyGuide() {
-            const guide = `
-                === SNAKEBITE EMERGENCY PROTOCOL ===
-                
-                IMMEDIATE ACTIONS:
-                1. CALL EMERGENCY SERVICES IMMEDIATELY
-                2. Keep victim calm and still
-                3. Position bite below heart level
-                4. Remove tight clothing/jewelry
-                5. Note time of bite and symptoms
-                
-                DO NOT:
-                ✗ Do NOT apply tourniquet
-                ✗ Do NOT cut the wound
-                ✗ Do NOT attempt to suck venom
-                ✗ Do NOT apply ice
-                ✗ Do NOT give alcohol/caffeine
-                ✗ Do NOT wash bite area (for identification)
-                
-                IDENTIFICATION:
-                • Take photo of snake if SAFE
-                • Note color, pattern, size
-                • Our AI can identify from photo
-                
-                SYMPTOMS TO MONITOR:
-                • Pain, swelling at bite site
-                • Nausea, vomiting, dizziness
-                • Difficulty breathing
-                • Blurred vision
-                • Bleeding from gums/nose
-                
-                MEDICAL INFORMATION:
-                • Antivenom is primary treatment
-                • Provide photo to medical team
-                • Note time for antivenom administration
-                
-                Global Emergency: +1-800-SNAKE-AID
-                VenomAI Emergency: emergency@venomai.org
-            `;
-            
-            alert(guide);
+            showInfoModal(
+                '🚨 Snakebite Emergency Protocol',
+                `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div>
+                        <h4 style="color:#2e7d32;margin-bottom:8px;">✅ Immediate Actions</h4>
+                        <ol style="padding-left:18px;">
+                            <li style="margin-bottom:6px;"><strong>Call emergency services immediately</strong></li>
+                            <li style="margin-bottom:6px;">Keep victim calm and completely still</li>
+                            <li style="margin-bottom:6px;">Position bite <em>below</em> heart level</li>
+                            <li style="margin-bottom:6px;">Remove tight clothing &amp; jewellery</li>
+                            <li style="margin-bottom:6px;">Note exact time of bite &amp; symptoms</li>
+                            <li style="margin-bottom:6px;">Immobilise limb with a splint or sling</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h4 style="color:#d32f2f;margin-bottom:8px;">✗ Do NOT</h4>
+                        <ul style="padding-left:18px;list-style:none;">
+                            <li style="margin-bottom:6px;">✗ Apply a tourniquet</li>
+                            <li style="margin-bottom:6px;">✗ Cut or suck the wound</li>
+                            <li style="margin-bottom:6px;">✗ Apply ice directly</li>
+                            <li style="margin-bottom:6px;">✗ Give alcohol or stimulants</li>
+                            <li style="margin-bottom:6px;">✗ Wash bite area (preserves venom for ID)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div style="margin-top:14px;padding:12px;background:rgba(46,125,50,0.08);border-radius:8px;">
+                    <strong>Identification tip:</strong> Take a photo of the snake if it is <em>safe</em> to do so — note colour, pattern, and size. Our AI can identify it from a photo.
+                </div>
+                <div style="margin-top:12px;padding:12px;background:rgba(211,47,47,0.08);border-radius:8px;">
+                    <strong style="color:#d32f2f;">📞 Emergency contacts:</strong><br>
+                    Global Helpline: +1-800-SNAKE-AID &nbsp;|&nbsp; Email: emergency@venomai.org
+                </div>`
+            );
         }
         
         // Show first aid guide
         function showFirstAidGuide() {
-            const guide = `
-                === SNAKEBITE FIRST AID GUIDE ===
-                
-                STEP 1: IMMEDIATE RESPONSE
-                • Move away from snake
-                • Call for help immediately
-                • Keep victim calm and still
-                • Position bite below heart level
-                
-                STEP 2: BITE MANAGEMENT
-                • Remove constrictive items
-                • Clean with soap/water if NO venom identification needed
-                • Cover with clean, dry dressing
-                • Immobilize limb with splint
-                
-                STEP 3: MONITORING
-                • Check breathing every 5 minutes
-                • Monitor pulse and consciousness
-                • Note time and progression of swelling
-                • Watch for systemic symptoms
-                
-                STEP 4: TRANSPORT
-                • Carry victim if possible
-                • Keep bite site immobilized
-                • Bring snake photo if available
-                • Notify hospital en route
-                
-                VENOM-SPECIFIC GUIDANCE:
-                
-                NEUROTOXIC (Cobras, Kraits, Mambas):
-                • Watch for breathing difficulty
-                • Be prepared for CPR
-                • Antivenom is critical
-                
-                HEMOTOXIC (Vipers, Adders):
-                • Watch for bleeding
-                • Monitor blood pressure
-                • Avoid blood thinners
-                
-                CYTOTOXIC (Some vipers, Pit vipers):
-                • Expect severe swelling
-                • Watch for tissue damage
-                • May require surgery
-                
-                PREVENTION TIPS:
-                • Wear boots in snake areas
-                • Use flashlight at night
-                • Avoid reaching into hidden areas
-                • Learn local snake species
-            `;
-            
-            alert(guide);
+            showInfoModal(
+                '🩺 Snakebite First Aid Guide',
+                `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div>
+                        <h4 style="color:#2e7d32;margin-bottom:6px;">Step 1 — Immediate Response</h4>
+                        <ul style="padding-left:18px;margin-bottom:12px;">
+                            <li>Move away from the snake</li>
+                            <li>Call for emergency help immediately</li>
+                            <li>Keep victim calm &amp; still</li>
+                            <li>Position bite below heart level</li>
+                        </ul>
+                        <h4 style="color:#2e7d32;margin-bottom:6px;">Step 2 — Bite Management</h4>
+                        <ul style="padding-left:18px;margin-bottom:12px;">
+                            <li>Remove all constrictive items</li>
+                            <li>Cover with clean dry dressing</li>
+                            <li>Immobilise limb with splint or sling</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="color:#2e7d32;margin-bottom:6px;">Step 3 — Monitoring</h4>
+                        <ul style="padding-left:18px;margin-bottom:12px;">
+                            <li>Check breathing every 5 minutes</li>
+                            <li>Monitor pulse &amp; consciousness</li>
+                            <li>Track swelling progression &amp; time</li>
+                            <li>Watch for systemic symptoms</li>
+                        </ul>
+                        <h4 style="color:#2e7d32;margin-bottom:6px;">Step 4 — Transport</h4>
+                        <ul style="padding-left:18px;">
+                            <li>Carry victim — minimise walking</li>
+                            <li>Keep bite site immobilised</li>
+                            <li>Bring snake photo if available</li>
+                            <li>Notify hospital en route</li>
+                        </ul>
+                    </div>
+                </div>
+                <h4 style="color:#2e7d32;margin-top:14px;margin-bottom:8px;">Venom-Specific Guidance</h4>
+                <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                    <tr style="background:#f5f5f5;"><th style="text-align:left;padding:6px 8px;">Type</th><th style="text-align:left;padding:6px 8px;">Examples</th><th style="text-align:left;padding:6px 8px;">Watch for</th></tr>
+                    <tr><td style="padding:6px 8px;">Neurotoxic</td><td style="padding:6px 8px;">Cobra, Krait, Mamba</td><td style="padding:6px 8px;">Breathing difficulty — be prepared for CPR</td></tr>
+                    <tr style="background:#f5f5f5;"><td style="padding:6px 8px;">Hemotoxic</td><td style="padding:6px 8px;">Vipers, Adders</td><td style="padding:6px 8px;">Bleeding, falling blood pressure</td></tr>
+                    <tr><td style="padding:6px 8px;">Cytotoxic</td><td style="padding:6px 8px;">Pit vipers</td><td style="padding:6px 8px;">Severe swelling, tissue damage, may need surgery</td></tr>
+                </table>`
+            );
         }
         
         // Show antivenom database
         function showAntivenomDatabase() {
-            const database = `
-                === GLOBAL ANTIVENOM DATABASE ===
-                
-                SOUTH ASIA:
-                • Polyvalent Antivenom (India)
-                  - Covers: Cobra, Krait, Russell's viper, Saw-scaled viper
-                  - Manufacturers: Serum Institute, Bharat Serums
-                
-                • Monovalent Antivenoms
-                  - Anti-cobra, Anti-krait, Anti-viper
-                
-                SOUTHEAST ASIA:
-                • Thai Red Cross Antivenoms
-                  - Monovalent for local species
-                  - Green pit viper, Malayan pit viper, Cobras
-                
-                • Indonesian Antivenoms
-                  - Specific to local species
-                
-                AFRICA:
-                • South African Institute Antivenoms
-                  - Polyvalent for African snakes
-                  - Boomslang, Puff adder, Mamba
-                
-                • North Africa Antivenoms
-                  - Saw-scaled viper, Horned viper
-                
-                AUSTRALIA:
-                • CSL Antivenoms
-                  - Specific to Australian species
-                  - Tiger snake, Brown snake, Taipan, Death adder
-                
-                AMERICAS:
-                • CroFab (North America)
-                  - Rattlesnakes, Copperheads, Cottonmouths
-                
-                • Antivipmyn (Latin America)
-                  - Bothrops, Crotalus species
-                
-                • Instituto Butantan (Brazil)
-                  - Local Brazilian species
-                
-                STORAGE & ADMINISTRATION:
-                • Refrigerated storage required
-                • Intravenous administration
-                • Test for serum sensitivity
-                • Multiple vials often needed
-                
-                ALTERNATIVES:
-                • In absence of specific antivenom:
-                  1. Polyvalent antivenom
-                  2. Nearest geographic match
-                  3. Supportive care only
-                
-                CRITICAL NOTES:
-                • Antivenom is species-specific
-                • Administer as soon as possible
-                • Monitor for allergic reactions
-                • May require repeat doses
-            `;
-            
-            alert(database);
+            showInfoModal(
+                '💉 Global Antivenom Database',
+                `<table style="width:100%;border-collapse:collapse;font-size:0.88rem;margin-bottom:14px;">
+                    <tr style="background:#2e7d32;color:#fff;"><th style="padding:8px;">Region</th><th style="padding:8px;">Antivenom</th><th style="padding:8px;">Covers</th></tr>
+                    <tr><td style="padding:7px;">🇮🇳 South Asia</td><td style="padding:7px;">Polyvalent (Serum Institute)</td><td style="padding:7px;">Cobra, Krait, Russell's Viper, Saw-scaled Viper</td></tr>
+                    <tr style="background:#f5f5f5;"><td style="padding:7px;">🌏 Southeast Asia</td><td style="padding:7px;">Thai Red Cross monovalents</td><td style="padding:7px;">Green Pit Viper, Malayan Pit Viper, Cobras</td></tr>
+                    <tr><td style="padding:7px;">🌍 Africa</td><td style="padding:7px;">SAIMR Polyvalent</td><td style="padding:7px;">Boomslang, Puff Adder, Mamba, Gaboon Viper</td></tr>
+                    <tr style="background:#f5f5f5;"><td style="padding:7px;">🇦🇺 Australia</td><td style="padding:7px;">CSL Monovalents</td><td style="padding:7px;">Tiger Snake, Brown Snake, Taipan, Death Adder</td></tr>
+                    <tr><td style="padding:7px;">🇺🇸 Americas</td><td style="padding:7px;">CroFab / Anavip</td><td style="padding:7px;">Rattlesnakes, Copperheads, Cottonmouths</td></tr>
+                    <tr style="background:#f5f5f5;"><td style="padding:7px;">🇧🇷 Brazil</td><td style="padding:7px;">Instituto Butantan</td><td style="padding:7px;">Bothrops, Crotalus, Lachesis</td></tr>
+                </table>
+                <h4 style="color:#2e7d32;margin-bottom:8px;">Storage &amp; Administration</h4>
+                <ul style="padding-left:18px;margin-bottom:12px;">
+                    <li>Must be refrigerated (2–8 °C)</li>
+                    <li>Always administered <strong>intravenously</strong> in a hospital setting</li>
+                    <li>Test for allergic reaction (serum sensitivity) first</li>
+                    <li>Multiple vials are often required for severe envenomation</li>
+                    <li>Most effective within <strong>4–6 hours</strong> of bite; still beneficial up to 24 hrs</li>
+                </ul>
+                <div style="padding:12px;background:rgba(255,160,0,0.1);border-radius:8px;">
+                    <strong>⚠️ Critical:</strong> Antivenom is species-specific. Always seek medical care — never self-administer. Monitor closely for anaphylaxis.
+                </div>`
+            );
         }
         
         // Initialize the page
@@ -2683,8 +2713,8 @@
             // Set current date
             analysisDate.textContent = new Date().toLocaleDateString();
             
-            // Load snake database
-            filterSnakes('all');
+            // Load snake database from API (falls back to built-in data)
+            loadSnakeDatabaseFromAPI();
             
             // Set up smooth scrolling for navigation links
             document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -2715,6 +2745,9 @@
                 }
             }
         }
+
+        // *** Call init() ***
+        init();
         
         // ========== GENAI INTEGRATION ==========
         let genAIModel = null;
@@ -2946,7 +2979,7 @@ How can I help you stay safe?`
             clearChatBtn.addEventListener('click', clearChat);
         }
         
-        // Send message to GenAI
+        // Send message to GenAI (via backend /api/chat)
         async function sendMessage() {
             const message = chatInput.value.trim();
             
@@ -2960,13 +2993,27 @@ How can I help you stay safe?`
             // Show typing indicator
             showTypingIndicator();
             
-            // Get AI response
-            setTimeout(() => {
-                const response = getGenAIResponse(message);
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, history: chatHistory })
+                });
+                const data = await res.json();
                 removeTypingIndicator();
-                addMessage(response, 'ai');
+                const reply = data.reply || getGenAIResponse(message);
+                addMessage(reply, 'ai');
+                // Update multi-turn history from backend
+                if (data.history && Array.isArray(data.history)) {
+                    chatHistory = data.history;
+                }
+            } catch (err) {
+                // Backend unreachable — fall back to local responses
+                removeTypingIndicator();
+                addMessage(getGenAIResponse(message), 'ai');
+            } finally {
                 chatSendBtn.disabled = false;
-            }, 1000 + Math.random() * 1000); // Simulate API delay
+            }
         }
         
         // Add message to chat
@@ -3093,6 +3140,19 @@ Would you like specific information on any of these topics?`;
         window.addEventListener('beforeunload', function() {
             stopCamera();
         });
+
+        // ========== BACKEND HEALTH CHECK ==========
+        (async () => {
+            try {
+                const r = await fetch(`${API_BASE_URL}/api/health`);
+                if (r.ok) {
+                    const d = await r.json();
+                    console.info(`✅ Backend connected — Gemini: ${d.gemini}`);
+                }
+            } catch (_) {
+                console.warn('ℹ️  Backend not reachable — running in offline/fallback mode.');
+            }
+        })();
     </script>
 </body>
 </html>

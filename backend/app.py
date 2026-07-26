@@ -28,29 +28,60 @@ FRONTEND_HTML = BASE_DIR.parent / 'index soi.html'
 # ──────────────────────────────────────────────
 # Optional Gemini AI initialisation
 # ──────────────────────────────────────────────
-_gemini_model = None
+_gemini_client = None
+_gemini_model_name = None  # resolved at startup
+_SYSTEM_INSTRUCTION = (
+    "You are VenomAI, a knowledgeable medical AI assistant specialising in "
+    "snakebite identification, treatment, and prevention. Always recommend "
+    "professional medical care for actual bites. Be concise and accurate. "
+    "Format responses with clear headings and bullet points where helpful."
+)
+
+# Models tried in priority order — first one that responds wins
+_MODEL_PRIORITY = [
+    "models/gemini-flash-lite-latest",
+    "models/gemini-2.0-flash",
+    "models/gemini-2.0-flash-lite",
+    "models/gemini-flash-latest",
+    "models/gemini-pro-latest",
+]
 
 def _init_gemini():
-    global _gemini_model
+    global _gemini_client, _gemini_model_name
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
+        print("[INFO] No GEMINI_API_KEY set -- using fallback responses.")
         return
     try:
-        import google.generativeai as genai  # type: ignore
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=(
-                "You are VenomAI, a knowledgeable medical AI assistant specialising in "
-                "snakebite identification, treatment, and prevention. Always recommend "
-                "professional medical care for actual bites. Be concise and accurate. "
-                "Format responses with clear headings and bullet points where helpful."
-            ),
-        )
-        print("✅ Gemini AI model initialised successfully.")
+        from google import genai  # type: ignore
+        from google.genai import types as _t  # type: ignore
+        client = genai.Client(api_key=api_key)
+
+        # Find first model with available quota
+        for model in _MODEL_PRIORITY:
+            try:
+                client.models.generate_content(
+                    model=model,
+                    contents="ping",
+                    config=_t.GenerateContentConfig(max_output_tokens=1),
+                )
+                _gemini_client = client
+                _gemini_model_name = model
+                print(f"[OK] Gemini ready -- using model: {model}")
+                return
+            except Exception as probe_err:
+                msg = str(probe_err)
+                if "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+                    print(f"[WARN] {model}: quota exhausted -- trying next model")
+                elif "NOT_FOUND" in msg or "not found" in msg.lower():
+                    print(f"[WARN] {model}: not available -- trying next model")
+                else:
+                    print(f"[WARN] {model}: {msg[:80]}")
+
+        print("[ERROR] All Gemini models exhausted quota or unavailable -- using fallback.")
     except Exception as exc:
-        print(f"⚠️  Gemini AI not available: {exc}")
-        _gemini_model = None
+        print(f"[ERROR] Gemini AI not available: {exc}")
+        _gemini_client = None
 
 _init_gemini()
 
@@ -200,7 +231,7 @@ def serve_frontend():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    gemini_status = "available" if _gemini_model else "fallback (no GEMINI_API_KEY)"
+    gemini_status = "available" if _gemini_client else "fallback (no GEMINI_API_KEY)"
     return jsonify({
         'status': 'ok',
         'message': 'VenomAI Backend is running',
@@ -352,24 +383,51 @@ def chat():
         return jsonify({'error': 'No message provided'}), 400
 
     try:
-        if _gemini_model:
-            # Build chat history for multi-turn conversation
-            chat_session = _gemini_model.start_chat(history=history)
-            response = chat_session.send_message(message)
+        if _gemini_client:
+            from google.genai import types as genai_types  # type: ignore
+
+            # Build conversation contents: history + new user message
+            contents = []
+            for entry in history:
+                role = entry.get('role', 'user')
+                parts_raw = entry.get('parts', [])
+                text = parts_raw[0] if isinstance(parts_raw, list) and parts_raw else str(parts_raw)
+                contents.append(genai_types.Content(
+                    role=role,
+                    parts=[genai_types.Part.from_text(text=text)]
+                ))
+            # Append the current user message
+            contents.append(genai_types.Content(
+                role='user',
+                parts=[genai_types.Part.from_text(text=message)]
+            ))
+
+            config = genai_types.GenerateContentConfig(
+                system_instruction=_SYSTEM_INSTRUCTION,
+                temperature=0.7,
+                max_output_tokens=1024,
+            )
+
+            response = _gemini_client.models.generate_content(
+                model=_gemini_model_name,
+                contents=contents,
+                config=config,
+            )
             reply = response.text
-            # Return updated history for client to track
-            updated_history = [
-                {"role": m.role, "parts": [p.text for p in m.parts]}
-                for m in chat_session.history
+
+            updated_history = history + [
+                {'role': 'user', 'parts': [message]},
+                {'role': 'model', 'parts': [reply]},
             ]
             return jsonify({'reply': reply, 'history': updated_history, 'source': 'gemini'})
         else:
             reply = _fallback_response(message)
             return jsonify({'reply': reply, 'history': [], 'source': 'fallback'})
     except Exception as e:
-        # Graceful degradation
+        # Log the real error so it's visible in the server terminal
+        print(f"[ERROR] Gemini API error: {e}")
         reply = _fallback_response(message)
-        return jsonify({'reply': reply, 'history': [], 'source': 'fallback', 'note': str(e)})
+        return jsonify({'reply': reply, 'history': [], 'source': 'fallback', 'error': str(e)})
 
 
 if __name__ == '__main__':
